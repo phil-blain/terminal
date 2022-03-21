@@ -237,10 +237,36 @@ void Terminal::UpdateAppearance(const ICoreAppearance& appearance)
 //      appropriate HRESULT for failing to resize.
 [[nodiscard]] HRESULT Terminal::UserResize(const COORD viewportSize) noexcept
 {
-    const auto oldDimensions = _mutableViewport.Dimensions();
+    const auto oldDimensions = _GetMutableViewport().Dimensions();
     if (viewportSize == oldDimensions)
     {
         return S_FALSE;
+    }
+
+    // Shortcut: if we're in the alt buffer, just resize the
+    // alt buffer and put off resizing the main buffer till we switch back. Fortunately, this is easy. We don't need to
+    // worry about the viewport and scrollback at all! The alt buffer never has
+    // any scrollback, so we just need to resize it and presto, we're done.
+    if (_inAltBuffer())
+    {
+        // stash this resize for the future.
+        _deferredResize = til::size{ viewportSize };
+
+        _altBuffer->GetCursor().StartDeferDrawing();
+        // we're capturing `this` here because when we exit, we want to EndDefer on the (newly created) active buffer.
+        auto endDefer = wil::scope_exit([this]() noexcept { _altBuffer->GetCursor().EndDeferDrawing(); });
+
+        // GH#3494: We don't need to reflow the alt buffer. Apps that use the
+        // alt buffer will redraw themselves. This prevents graphical artifacts.
+        //
+        // This is consistent with VTE
+        RETURN_IF_FAILED(_altBuffer->ResizeTraditional(viewportSize));
+
+        // Since the _mutableViewport is no longer the size of the actual
+        // viewport, then update our _altBufferSize tracker we're using to help
+        // us out here.
+        _altBufferSize = til::size{ viewportSize };
+        return S_OK;
     }
 
     const auto dx = ::base::ClampSub(viewportSize.X, oldDimensions.X);
@@ -423,48 +449,6 @@ void Terminal::UpdateAppearance(const ICoreAppearance& appearance)
     // If the old scrolloffset was 0, then we weren't scrolled back at all
     // before, and shouldn't be now either.
     _scrollOffset = originalOffsetWasZero ? 0 : static_cast<int>(::base::ClampSub(_mutableViewport.Top(), newVisibleTop));
-
-    // Now that we've finished the hard work of resizing the main buffer and
-    // getting the viewport back into the right spot, we need to ALSO resize the
-    // alt buffer, if one exists. Fortunately, this is easy. We don't need to
-    // worry about the viewport and scrollback at all! The alt buffer never has
-    // any scrollback, so we just need to resize it and presto, we're done.
-    if (_inAltBuffer())
-    {
-        _altBuffer->GetCursor().StartDeferDrawing();
-        // we're capturing `this` here because when we exit, we want to EndDefer on the (newly created) active buffer.
-        auto endDefer = wil::scope_exit([this]() noexcept { _altBuffer->GetCursor().EndDeferDrawing(); });
-
-        // First allocate a new text buffer to take the place of the current one.
-        std::unique_ptr<TextBuffer> newTextBuffer;
-        try
-        {
-            // GH#3848 - Stash away the current attributes
-            const auto oldBufferAttributes = _altBuffer->GetCurrentAttributes();
-            newTextBuffer = std::make_unique<TextBuffer>(bufferSize,
-                                                         TextAttribute{},
-                                                         0, // temporarily set size to 0 so it won't render.
-                                                         true,
-                                                         _mainBuffer->GetRenderer());
-
-            // start defer drawing on the new buffer
-            newTextBuffer->GetCursor().StartDeferDrawing();
-
-            // We don't need any fancy position information. We're just gonna
-            // resize the buffer, it's gonna be in exactly the place it is now.
-            // There's no scrollback to worry about!
-
-            RETURN_IF_FAILED(TextBuffer::Reflow(*_altBuffer.get(),
-                                                *newTextBuffer.get(),
-                                                _GetMutableViewport(),
-                                                std::nullopt));
-
-            // Restore the active text attributes
-            newTextBuffer->SetCurrentAttributes(oldBufferAttributes);
-            _altBuffer.swap(newTextBuffer);
-        }
-        CATCH_RETURN();
-    }
 
     // GH#5029 - make sure to InvalidateAll here, so that we'll paint the entire visible viewport.
     try
@@ -960,7 +944,10 @@ WORD Terminal::_TakeVirtualKeyFromLastKeyEvent(const WORD scanCode) noexcept
 
 Viewport Terminal::_GetMutableViewport() const noexcept
 {
-    return _inAltBuffer() ? Viewport::FromDimensions(_mutableViewport.Dimensions()) :
+    // GH#3493: if we're in the alt buffer, then it's possible that the mutable
+    // viewport's size hasn't been updated yet. In that case, use the
+    // temporarily stashed _altBufferSize instead.
+    return _inAltBuffer() ? Viewport::FromDimensions(_altBufferSize.to_win32_coord()) :
                             _mutableViewport;
 }
 
@@ -977,7 +964,7 @@ int Terminal::ViewStartIndex() const noexcept
 
 int Terminal::ViewEndIndex() const noexcept
 {
-    return _inAltBuffer() ? _mutableViewport.Height() - 1 : _mutableViewport.BottomInclusive();
+    return _inAltBuffer() ? _altBufferSize.height : _mutableViewport.BottomInclusive();
 }
 
 // _VisibleStartIndex is the first visible line of the buffer
@@ -995,9 +982,14 @@ int Terminal::_VisibleEndIndex() const noexcept
 
 Viewport Terminal::_GetVisibleViewport() const noexcept
 {
+    // GH#3493: if we're in the alt buffer, then it's possible that the mutable
+    // viewport's size hasn't been updated yet. In that case, use the
+    // temporarily stashed _altBufferSize instead.
     const COORD origin{ 0, gsl::narrow<short>(_VisibleStartIndex()) };
+    const COORD size{ _inAltBuffer() ? _altBufferSize.to_win32_coord() :
+                                       _mutableViewport.Dimensions() };
     return Viewport::FromDimensions(origin,
-                                    _mutableViewport.Dimensions());
+                                    size);
 }
 
 // Writes a string of text to the buffer, then moves the cursor (and viewport)

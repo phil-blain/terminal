@@ -588,11 +588,12 @@ void Terminal::PopGraphicsRendition()
 void Terminal::UseAlternateScreenBuffer()
 {
     // the new alt buffer is exactly the size of the viewport.
-    const COORD bufferSize{ _mutableViewport.Dimensions() };
+    _altBufferSize = til::size{ _mutableViewport.Dimensions() };
+
     const auto cursorSize = _mainBuffer->GetCursor().GetSize();
 
     // Create a new alt buffer
-    _altBuffer = std::make_unique<TextBuffer>(bufferSize,
+    _altBuffer = std::make_unique<TextBuffer>(_altBufferSize.to_win32_coord(),
                                               TextAttribute{},
                                               cursorSize,
                                               true,
@@ -659,6 +660,12 @@ void Terminal::UseMainScreenBuffer()
 
     // destroy the alt buffer
     _altBuffer = nullptr;
+
+    if (_deferredResize.has_value())
+    {
+        LOG_IF_FAILED(UserResize(_deferredResize.value().to_win32_coord()));
+        _deferredResize = std::nullopt;
+    }
 
     // update all the hyperlinks on the screen
     UpdatePatternsUnderLock();

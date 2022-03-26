@@ -323,7 +323,7 @@ void TextBufferTests::DoBoundaryTest(PCWCHAR const pwszInputString,
     {
         for (short cStart = cLength; cStart < cMax; cStart++)
         {
-            charRow.ClearGlyph(cStart);
+            charRow.ClearCell(cStart);
         }
     }
 
@@ -413,7 +413,7 @@ void TextBufferTests::TestInsertCharacter()
     VERIFY_ARE_NOT_EQUAL(charRow.GlyphAt(coordCursorBefore.X), wchTest);
     VERIFY_ARE_NOT_EQUAL(charRow.DbcsAttrAt(coordCursorBefore.X), dbcsAttribute);
 
-    auto attr = Row.GetAttrRow().GetAttrByColumn(coordCursorBefore.X);
+    auto attr = Row.GetAttrByColumn(coordCursorBefore.X);
 
     VERIFY_ARE_NOT_EQUAL(attr, TestAttributes);
 
@@ -424,7 +424,7 @@ void TextBufferTests::TestInsertCharacter()
     VERIFY_ARE_EQUAL(charRow.GlyphAt(coordCursorBefore.X), wchTest);
     VERIFY_ARE_EQUAL(charRow.DbcsAttrAt(coordCursorBefore.X), dbcsAttribute);
 
-    attr = Row.GetAttrRow().GetAttrByColumn(coordCursorBefore.X);
+    attr = Row.GetAttrByColumn(coordCursorBefore.X);
     VERIFY_ARE_EQUAL(attr, TestAttributes);
 
     // ensure that the cursor moved to a new position (X or Y or both have changed)
@@ -531,7 +531,7 @@ void TextBufferTests::TestLastNonSpace(short const cursorPosY)
     COORD coordExpected = textBuffer.GetCursor().GetPosition();
 
     // Try to get the X position from the current cursor position.
-    coordExpected.X = static_cast<short>(textBuffer.GetRowByOffset(coordExpected.Y).GetCharRow().MeasureRight()) - 1;
+    coordExpected.X = static_cast<short>(textBuffer.GetRowByOffset(coordExpected.Y).MeasureRight()) - 1;
 
     // If we went negative, this row was empty and we need to continue seeking upward...
     // - As long as X is negative (empty rows)
@@ -539,7 +539,7 @@ void TextBufferTests::TestLastNonSpace(short const cursorPosY)
     while (coordExpected.X < 0 && coordExpected.Y > 0)
     {
         coordExpected.Y--;
-        coordExpected.X = static_cast<short>(textBuffer.GetRowByOffset(coordExpected.Y).GetCharRow().MeasureRight()) - 1;
+        coordExpected.X = static_cast<short>(textBuffer.GetRowByOffset(coordExpected.Y).MeasureRight()) - 1;
     }
 
     VERIFY_ARE_EQUAL(coordLastNonSpace.X, coordExpected.X);
@@ -623,7 +623,7 @@ void TextBufferTests::TestIncrementCircularBuffer()
         charRow.GlyphAt(0) = { &stuff, 1 };
 
         // ensure it does say that it contains text
-        VERIFY_IS_TRUE(FirstRow.GetCharRow().ContainsText());
+        VERIFY_IS_TRUE(FirstRow.ContainsText());
 
         // try increment
         textBuffer.IncrementCircularBuffer();
@@ -633,7 +633,7 @@ void TextBufferTests::TestIncrementCircularBuffer()
         VERIFY_ARE_NOT_EQUAL(textBuffer._GetFirstRow(), FirstRow); // the old first row is no longer the first
 
         // ensure old first row has been emptied
-        VERIFY_IS_FALSE(FirstRow.GetCharRow().ContainsText());
+        VERIFY_IS_FALSE(FirstRow.ContainsText());
     }
 }
 
@@ -1321,9 +1321,9 @@ void TextBufferTests::CopyLastAttr()
     const ROW& row2 = tbi.GetRowByOffset(y + 2);
     const ROW& row3 = tbi.GetRowByOffset(y + 3);
 
-    const std::vector<TextAttribute> attrs1{ row1.GetAttrRow().begin(), row1.GetAttrRow().end() };
-    const std::vector<TextAttribute> attrs2{ row2.GetAttrRow().begin(), row2.GetAttrRow().end() };
-    const std::vector<TextAttribute> attrs3{ row3.GetAttrRow().begin(), row3.GetAttrRow().end() };
+    const std::vector<TextAttribute> attrs1{ row1.begin(), row1.end() };
+    const std::vector<TextAttribute> attrs2{ row2.begin(), row2.end() };
+    const std::vector<TextAttribute> attrs3{ row3.begin(), row3.end() };
 
     const auto attr1A = attrs1[0];
 
@@ -1853,7 +1853,7 @@ void TextBufferTests::ResizeTraditionalRotationPreservesHighUnicode()
 
     // Get a position inside the buffer
     const COORD pos{ 2, 1 };
-    auto position = _buffer->_storage[pos.Y].GetCharRow().GlyphAt(pos.X);
+    auto position = _buffer->_storage[pos.Y].GlyphAt(pos.X);
 
     // Fill it up with a sequence that will have to hit the high unicode storage.
     // This is the negative squared latin capital letter B emoji: 🅱
@@ -1895,7 +1895,7 @@ void TextBufferTests::ScrollBufferRotationPreservesHighUnicode()
 
     // Get a position inside the buffer
     const COORD pos{ 2, 1 };
-    auto position = _buffer->_storage[pos.Y].GetCharRow().GlyphAt(pos.X);
+    auto position = _buffer->_storage[pos.Y].GlyphAt(pos.X);
 
     // Fill it up with a sequence that will have to hit the high unicode storage.
     // This is the fire emoji: 🔥
@@ -1935,7 +1935,7 @@ void TextBufferTests::ResizeTraditionalHighUnicodeRowRemoval()
 
     // Get a position inside the buffer in the bottom row
     const COORD pos{ 0, bufferSize.Y - 1 };
-    auto position = _buffer->_storage[pos.Y].GetCharRow().GlyphAt(pos.X);
+    auto position = _buffer->_storage[pos.Y].GlyphAt(pos.X);
 
     // Fill it up with a sequence that will have to hit the high unicode storage.
     // This is the eggplant emoji: 🍆
@@ -1970,7 +1970,7 @@ void TextBufferTests::ResizeTraditionalHighUnicodeColumnRemoval()
 
     // Get a position inside the buffer in the last column
     const COORD pos{ bufferSize.X - 1, 0 };
-    auto position = _buffer->_storage[pos.Y].GetCharRow().GlyphAt(pos.X);
+    auto position = _buffer->_storage[pos.Y].GlyphAt(pos.X);
 
     // Fill it up with a sequence that will have to hit the high unicode storage.
     // This is the peach emoji: 🍑
@@ -2644,14 +2644,14 @@ void TextBufferTests::HyperlinkTrim()
     const auto id = _buffer->GetHyperlinkId(url, customId);
     TextAttribute newAttr{ 0x7f };
     newAttr.SetHyperlinkId(id);
-    _buffer->GetRowByOffset(pos.Y).GetAttrRow().SetAttrToEnd(pos.X, newAttr);
+    _buffer->GetRowByOffset(pos.Y).SetAttrToEnd(pos.X, newAttr);
     _buffer->AddHyperlinkToMap(url, id);
 
     // Set a different hyperlink id somewhere else in the buffer
     const COORD otherPos{ 70, 5 };
     const auto otherId = _buffer->GetHyperlinkId(otherUrl, otherCustomId);
     newAttr.SetHyperlinkId(otherId);
-    _buffer->GetRowByOffset(otherPos.Y).GetAttrRow().SetAttrToEnd(otherPos.X, newAttr);
+    _buffer->GetRowByOffset(otherPos.Y).SetAttrToEnd(otherPos.X, newAttr);
     _buffer->AddHyperlinkToMap(otherUrl, otherId);
 
     // Increment the circular buffer
@@ -2688,12 +2688,12 @@ void TextBufferTests::NoHyperlinkTrim()
     const auto id = _buffer->GetHyperlinkId(url, customId);
     TextAttribute newAttr{ 0x7f };
     newAttr.SetHyperlinkId(id);
-    _buffer->GetRowByOffset(pos.Y).GetAttrRow().SetAttrToEnd(pos.X, newAttr);
+    _buffer->GetRowByOffset(pos.Y).SetAttrToEnd(pos.X, newAttr);
     _buffer->AddHyperlinkToMap(url, id);
 
     // Set the same hyperlink id somewhere else in the buffer
     const COORD otherPos{ 70, 5 };
-    _buffer->GetRowByOffset(otherPos.Y).GetAttrRow().SetAttrToEnd(otherPos.X, newAttr);
+    _buffer->GetRowByOffset(otherPos.Y).SetAttrToEnd(otherPos.X, newAttr);
 
     // Increment the circular buffer
     _buffer->IncrementCircularBuffer();

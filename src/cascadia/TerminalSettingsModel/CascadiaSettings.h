@@ -52,7 +52,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
     {
         static SettingsLoader Default(const std::string_view& userJSON, const std::string_view& inboxJSON);
         SettingsLoader(const std::string_view& userJSON, const std::string_view& inboxJSON);
-
+        
         void GenerateProfiles();
         void ApplyRuntimeInitialSettings();
         void MergeInboxIntoUserSettings();
@@ -60,6 +60,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         void MergeFragmentIntoUserSettings(const winrt::hstring& source, const std::string_view& content);
         void FinalizeLayering();
         bool DisableDeletedProfiles();
+        bool FixupUserSettings();
 
         ParsedSettings inboxSettings;
         ParsedSettings userSettings;
@@ -155,7 +156,6 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         void _validateMediaResources();
         void _validateKeybindings() const;
         void _validateColorSchemesInCommands() const;
-        void _validateCorrectDefaultShellPaths() const;
         bool _hasInvalidColorScheme(const Model::Command& command) const;
 
         // user settings

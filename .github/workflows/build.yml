@@ -26,7 +26,8 @@ jobs:
       - name: Initialize submodules
         run: git submodule update --init --recursive
         
-      - name: Build in cmd
+      - name: Build in powershell
         run: |
-          .\tools\razzle.cmd
-          bcz
+          Import-Module .\tools\OpenConsole.psm1
+          Set-MsBuildDevEnvironment
+          Invoke-OpenConsoleBuild

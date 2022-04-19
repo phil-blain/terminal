@@ -110,7 +110,7 @@ This takes quite some time, and only generates an `msix`. It does not install th
 
 ```powershell
 # If you haven't already:
-Import-Module tools\OpenConsole.psm1;
+Import-Module .\tools\OpenConsole.psm1;
 Set-MsBuildDevEnvironment;
 
 # The Set-MsBuildDevEnvironment call is needed for finding the path to
